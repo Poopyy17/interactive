@@ -22,6 +22,23 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import QuarterBackground from './QuarterBackground';
 
 const Lessons = () => {
@@ -33,6 +50,11 @@ const Lessons = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newLessonTitle, setNewLessonTitle] = useState('');
   const nextLessonNumber = lessons.length + 1;
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [lessonToEdit, setLessonToEdit] = useState(null);
+  const [editedLessonTitle, setEditedLessonTitle] = useState('');
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [lessonToDelete, setLessonToDelete] = useState(null);
 
   // Array of vibrant card accent colors
   const cardColors = [
@@ -78,6 +100,62 @@ const Lessons = () => {
       setError('Failed to add lesson');
       console.error('Error:', error);
     }
+  };
+
+  const handleEditLesson = async () => {
+    try {
+      const response = await axios.put(`/api/lessons/${lessonToEdit.id}`, {
+        title: editedLessonTitle,
+      });
+
+      if (response.data.success) {
+        // Update the lessons list with the edited lesson
+        const updatedLessons = lessons.map((lesson) =>
+          lesson.id === lessonToEdit.id ? response.data.lesson : lesson
+        );
+
+        setLessons(updatedLessons);
+        setIsEditDialogOpen(false);
+        setLessonToEdit(null);
+        toast.success('Lesson updated successfully!');
+      }
+    } catch (error) {
+      setError('Failed to update lesson');
+      console.error('Error:', error);
+      toast.error('Failed to update lesson');
+    }
+  };
+
+  const handleDeleteLesson = async () => {
+    try {
+      const response = await axios.delete(`/api/lessons/${lessonToDelete.id}`);
+
+      if (response.data.success) {
+        // Remove the deleted lesson from the list
+        const updatedLessons = lessons.filter(
+          (lesson) => lesson.id !== lessonToDelete.id
+        );
+        setLessons(updatedLessons);
+        setIsDeleteDialogOpen(false);
+        setLessonToDelete(null);
+        toast.success('Lesson deleted successfully!');
+      }
+    } catch (error) {
+      setError('Failed to delete lesson');
+      console.error('Error:', error);
+      toast.error('Failed to delete lesson');
+    }
+  };
+
+  const openEditDialog = (lesson) => {
+    setLessonToEdit(lesson);
+    setEditedLessonTitle(lesson.title || '');
+    setIsEditDialogOpen(true);
+  };
+
+  const openDeleteDialog = (lesson) => {
+    setLessonToDelete(lesson);
+    setIsDeleteDialogOpen(true);
   };
 
   const handleLessonClick = (lessonId) => {
@@ -196,22 +274,56 @@ const Lessons = () => {
                   className={`hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 cursor-pointer border-0 shadow rounded-lg overflow-hidden border-l-8 ${
                     cardColors[index % cardColors.length]
                   }`}
-                  onClick={() => handleLessonClick(lesson.id)}
                 >
                   <div className="flex items-center p-5">
                     <div className="bg-gray-100 rounded-full w-12 h-12 flex items-center justify-center mr-4">
                       <BookOpenCheck className="h-6 w-6 text-gray-600" />
                     </div>
-                    <div className="flex-1">
-                      <div className="text-sm uppercase font-semibold text-gray-500 mb-1">
+                    <div
+                      className="flex-1"
+                      onClick={() => handleLessonClick(lesson.id)}
+                    >
+                      <div className="text-medium uppercase font-semibold text-xl text-indigo-500 mb-1">
                         Lesson {lesson.lesson_number}
                       </div>
-                      <h3 className="font-medium text-lg text-gray-800">
+                      <h3 className="font-medium text-xl text-gray-800">
                         {lesson.title || 'No title set'}
                       </h3>
                     </div>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            className="h-8 w-8 p-0 rounded-full hover:bg-gray-100"
+                          >
+                            <MoreVertical className="h-6 w-6" />
+                            <span className="sr-only">Open menu</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => openEditDialog(lesson)}
+                            className="text-indigo-600 hover:text-indigo-700 focus:text-indigo-700"
+                          >
+                            <Pencil className="mr-2 h-4 w-4 text-indigo-700" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => openDeleteDialog(lesson)}
+                            className="text-red-600 hover:text-red-700 focus:text-red-700"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4 text-red-700" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
-                  <div className="px-5 py-4 flex justify-end items-center border-t">
+                  <div
+                    className="px-5 py-4 flex justify-end items-center border-t"
+                    onClick={() => handleLessonClick(lesson.id)}
+                  >
                     <span className="text-sm font-medium text-blue-600 flex items-center">
                       View lesson
                       <ArrowRight className="ml-1 h-4 w-4" />
@@ -223,6 +335,76 @@ const Lessons = () => {
           )}
         </main>
       </div>
+
+      {/* Edit Lesson Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Lesson</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Lesson Number</Label>
+              <Input
+                value={lessonToEdit?.lesson_number || ''}
+                disabled
+                className="bg-gray-50"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Lesson Title</Label>
+              <Input
+                placeholder="Enter lesson title"
+                value={editedLessonTitle}
+                onChange={(e) => setEditedLessonTitle(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsEditDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-indigo-700 text-white hover:bg-indigo-800"
+              onClick={handleEditLesson}
+              disabled={!editedLessonTitle.trim()}
+            >
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Lesson</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete Lesson{' '}
+              {lessonToDelete?.lesson_number}:{' '}
+              {lessonToDelete?.title || 'Untitled'}? This will permanently
+              remove the lesson and all its content including presentations and
+              games. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteLesson}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </QuarterBackground>
   );
 };

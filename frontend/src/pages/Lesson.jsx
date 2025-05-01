@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import {
-  Upload,
   Gamepad2,
   Image,
   FileVideo,
@@ -16,10 +15,28 @@ import {
   Loader2,
   Presentation,
   Clock,
-  CalendarDays,
   Plus,
   ArrowLeft,
+  Trash2,
+  MoreVertical,
+  Globe,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import PresentationUpload from '../components/presentation-upload';
 import axios from 'axios';
 import ImageViewer from '../components/image-viewer';
@@ -51,6 +68,8 @@ const LessonDetails = () => {
   const [showMultipleChoiceEditDialog, setShowMultipleChoiceEditDialog] =
     useState(false);
   const [gameToEdit, setGameToEdit] = useState(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [presentationToDelete, setPresentationToDelete] = useState(null);
 
   // Fetch lesson details
   useEffect(() => {
@@ -141,6 +160,36 @@ const LessonDetails = () => {
     }
   };
 
+  const handleDeletePresentation = async () => {
+    try {
+      const response = await axios.delete(
+        `/api/lessons/presentations/${presentationToDelete.id}`
+      );
+
+      if (response.data.success) {
+        // Remove the deleted presentation from state
+        setPresentations(
+          presentations.filter((p) => p.id !== presentationToDelete.id)
+        );
+        toast.success('Presentation deleted successfully');
+
+        // Close the dialog and clear the selected presentation
+        setIsDeleteDialogOpen(false);
+        setPresentationToDelete(null);
+
+        // If we're viewing this presentation, close the viewer
+        if (selectedMedia && selectedMedia.id === presentationToDelete.id) {
+          setSelectedMedia(null);
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting presentation:', error);
+      toast.error(
+        error.response?.data?.message || 'Failed to delete presentation'
+      );
+    }
+  };
+
   const getFileTypeIcon = (type) => {
     switch (type) {
       case 'powerpoint':
@@ -149,6 +198,8 @@ const LessonDetails = () => {
         return <Image className="w-6 h-6" />;
       case 'video':
         return <FileVideo className="w-6 h-6" />;
+      case 'link':
+        return <Globe className="w-6 h-6" />;
       default:
         return <FileType className="w-6 h-6" />;
     }
@@ -165,6 +216,8 @@ const LessonDetails = () => {
         return `Video ${typeCount}`;
       case 'powerpoint':
         return `Presentation ${typeCount}`;
+      case 'link':
+        return `Online Presentation ${typeCount}`;
       default:
         return `File ${typeCount}`;
     }
@@ -261,6 +314,9 @@ const LessonDetails = () => {
   const handlePresentationClick = (presentation) => {
     if (presentation.content_type === 'powerpoint') {
       handleDownload(presentation);
+    } else if (presentation.content_type === 'link') {
+      // Open the link in a new tab
+      window.open(presentation.file_url, '_blank', 'noopener,noreferrer');
     } else {
       setSelectedMedia(presentation);
       if (presentation.content_type === 'image') {
@@ -274,84 +330,206 @@ const LessonDetails = () => {
 
   const renderPresentationsGrid = () => {
     const videoItems = presentations.filter((p) => p.content_type === 'video');
-    const otherItems = presentations.filter((p) => p.content_type !== 'video');
+    const linkItems = presentations.filter((p) => p.content_type === 'link');
+    const otherItems = presentations.filter(
+      (p) => p.content_type !== 'video' && p.content_type !== 'link'
+    );
 
     return (
       <>
         {/* Videos section - displayed at top, full width */}
-        {videoItems.length > 0 && (
-          <div className="mb-8">
-            <h3 className="font-medium text-lg mb-4">Videos</h3>
-            <div className="space-y-4">
-              {videoItems.map((presentation) => (
+        {videoItems.map((presentation) => (
+          <Card
+            key={presentation.id}
+            className="group relative overflow-hidden rounded-xl border-0 bg-white shadow-md transition-all duration-300 hover:shadow-xl"
+          >
+            <div
+              className="cursor-pointer grid grid-cols-1 md:grid-cols-3 gap-4"
+              onClick={() => handlePresentationClick(presentation)}
+            >
+              {/* Video Preview - Left side */}
+              <div className="relative aspect-video overflow-hidden bg-slate-100">
+                <video
+                  src={getMediaUrl(presentation)}
+                  className="h-full w-full object-cover"
+                />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40 transition-opacity group-hover:bg-black/30">
+                  <FileVideo className="h-12 w-12 text-white/90 drop-shadow-lg" />
+                </div>
+
+                {/* Type Badge */}
+                <div className="absolute top-3 right-3">
+                  <div className="backdrop-blur-md bg-white/90 rounded-full px-3 py-1.5 text-xs font-medium shadow-sm border border-white/20">
+                    VIDEO
+                  </div>
+                </div>
+              </div>
+
+              {/* Content Info - Right side */}
+              <div className="p-4 md:col-span-2 flex flex-col">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    <FileVideo className="w-5 h-5 text-slate-500" />
+                    <h3 className="font-medium text-lg text-slate-800">
+                      {presentation.title ||
+                        getContentTitle(
+                          'video',
+                          videoItems.filter((p) => p.id <= presentation.id)
+                        )}
+                    </h3>
+                  </div>
+
+                  {/* Dropdown menu */}
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          className="h-8 w-8 p-0 rounded-full hover:bg-gray-100"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                          <span className="sr-only">Open menu</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setPresentationToDelete(presentation);
+                            setIsDeleteDialogOpen(true);
+                          }}
+                          className="text-red-600 hover:text-red-700 focus:text-red-700"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+
+                {/* Description */}
+                {presentation.description && (
+                  <p className="text-slate-600 mt-1 mb-auto line-clamp-3">
+                    {presentation.description}
+                  </p>
+                )}
+
+                <div className="mt-4 flex items-center gap-1.5 text-xs text-slate-500">
+                  <Clock className="h-3.5 w-3.5" />
+                  <span>
+                    Uploaded{' '}
+                    {new Date(presentation.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </Card>
+        ))}
+
+        {/* Links section - add this section */}
+        {linkItems.length > 0 && (
+          <div className="mt-8 mb-6">
+            <h3 className="font-medium text-lg mb-4">Online Presentations</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {linkItems.map((presentation) => (
                 <Card
                   key={presentation.id}
-                  className="group relative overflow-hidden rounded-xl border-0 bg-white shadow-md transition-all duration-300 hover:shadow-xl"
+                  className="group relative overflow-hidden rounded-xl border-0 bg-white shadow-md transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
                 >
                   <div
-                    className="cursor-pointer grid grid-cols-1 md:grid-cols-3 gap-4"
+                    className="cursor-pointer"
                     onClick={() => handlePresentationClick(presentation)}
                   >
-                    {/* Video Preview - Left side */}
-                    <div className="relative aspect-video overflow-hidden bg-slate-100">
-                      <video
-                        src={getMediaUrl(presentation)}
-                        className="h-full w-full object-cover"
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 transition-opacity group-hover:bg-black/50">
-                        <FileVideo className="h-12 w-12 text-white/90 drop-shadow-lg" />
+                    {/* Link Preview Section */}
+                    <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-purple-50 to-purple-100">
+                      <div className="flex h-full items-center justify-center">
+                        <div className="text-center p-4">
+                          <Globe className="mx-auto h-16 w-16 text-purple-400 mb-2" />
+                          <span className="text-sm font-medium text-purple-700 block mb-1 line-clamp-1">
+                            {presentation.title || 'Online Presentation'}
+                          </span>
+                          <span className="text-xs text-purple-500 break-all line-clamp-2">
+                            {presentation.file_url}
+                          </span>
+                        </div>
                       </div>
 
                       {/* Type Badge */}
                       <div className="absolute top-3 right-3">
                         <div className="backdrop-blur-md bg-white/90 rounded-full px-3 py-1.5 text-xs font-medium shadow-sm border border-white/20">
-                          VIDEO
+                          LINK
                         </div>
                       </div>
                     </div>
 
-                    {/* Content Info - Right side */}
-                    <div className="p-4 md:col-span-2 flex flex-col">
-                      <div className="flex items-center gap-2 mb-2">
-                        <FileVideo className="w-5 h-5 text-slate-500" />
-                        <h3 className="font-medium text-lg text-slate-800">
-                          {presentation.title ||
-                            getContentTitle(
-                              'video',
-                              videoItems.filter((p) => p.id <= presentation.id)
-                            )}
-                        </h3>
+                    {/* Content Info */}
+                    <div className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Globe className="w-5 h-5 text-purple-500" />
+                          <h3 className="font-medium text-slate-700">
+                            {presentation.title ||
+                              getContentTitle(
+                                'link',
+                                presentations.filter(
+                                  (p) =>
+                                    p.content_type === 'link' &&
+                                    p.id <= presentation.id
+                                )
+                              )}
+                          </h3>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div
+                          className="flex items-center"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {/* Delete dropdown */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 rounded-full hover:bg-gray-100"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                                <span className="sr-only">Open menu</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setPresentationToDelete(presentation);
+                                  setIsDeleteDialogOpen(true);
+                                }}
+                                className="text-red-600 hover:text-red-700 focus:text-red-700"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
 
+                      {/* Description if available */}
                       {presentation.description && (
-                        <p className="text-slate-600 mt-1 mb-auto line-clamp-3">
+                        <p className="text-sm text-slate-600 mt-1.5 line-clamp-2">
                           {presentation.description}
                         </p>
                       )}
 
-                      <div className="mt-4 flex items-center gap-1.5 text-xs text-slate-500">
+                      {/* Upload Date */}
+                      <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
                         <Clock className="h-3.5 w-3.5" />
                         <span>
-                          Uploaded{' '}
+                          Added{' '}
                           {new Date(
                             presentation.created_at
                           ).toLocaleDateString()}
                         </span>
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Play button overlay */}
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all group-hover:bg-black/20 group-hover:opacity-100">
-                    <div className="transform translate-y-4 transition-transform group-hover:translate-y-0">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="bg-white/90 text-slate-800 hover:bg-white"
-                        onClick={() => handlePresentationClick(presentation)}
-                      >
-                        Play Video
-                      </Button>
                     </div>
                   </div>
                 </Card>
@@ -383,7 +561,7 @@ const LessonDetails = () => {
                             alt={presentation.file_url}
                             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                           />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                         </>
                       ) : (
                         <div className="flex h-full items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 group-hover:from-slate-100 group-hover:to-slate-200 transition-colors">
@@ -425,21 +603,53 @@ const LessonDetails = () => {
                           </h3>
                         </div>
 
-                        {/* Download button for PowerPoint */}
-                        {presentation.content_type === 'powerpoint' && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-3 text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition-colors"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownload(presentation);
-                            }}
-                          >
-                            <Download className="w-4 h-4 mr-1.5" />
-                            Download
-                          </Button>
-                        )}
+                        {/* Action buttons */}
+                        <div
+                          className="flex items-center"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {/* Download button for PowerPoint */}
+                          {presentation.content_type === 'powerpoint' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 px-3 text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition-colors mr-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownload(presentation);
+                              }}
+                            >
+                              <Download className="w-4 h-4 mr-1.5" />
+                              Download
+                            </Button>
+                          )}
+
+                          {/* Delete dropdown */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 rounded-full hover:bg-gray-100"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                                <span className="sr-only">Open menu</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setPresentationToDelete(presentation);
+                                  setIsDeleteDialogOpen(true);
+                                }}
+                                className="text-red-600 hover:text-red-700 focus:text-red-700"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
 
                       {/* Description if available */}
@@ -461,22 +671,6 @@ const LessonDetails = () => {
                       </div>
                     </div>
                   </div>
-
-                  {/* Hover Overlay for Images */}
-                  {presentation.content_type === 'image' && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all group-hover:bg-black/20 group-hover:opacity-100">
-                      <div className="transform translate-y-4 transition-transform group-hover:translate-y-0">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="bg-white/90 text-slate-800 hover:bg-white"
-                          onClick={() => handlePresentationClick(presentation)}
-                        >
-                          View Image
-                        </Button>
-                      </div>
-                    </div>
-                  )}
                 </Card>
               ))}
             </div>
@@ -712,6 +906,39 @@ const LessonDetails = () => {
           gameToEdit={gameToEdit}
         />
       </div>
+
+      {/* Delete Presentation Confirmation Dialog */}
+      <AlertDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Content</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this{' '}
+              {presentationToDelete?.content_type || 'item'}?
+              {presentationToDelete?.title && (
+                <span className="font-medium block mt-1">
+                  "{presentationToDelete.title}"
+                </span>
+              )}
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPresentationToDelete(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeletePresentation}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </LessonBackground>
   );
 };

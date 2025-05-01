@@ -1,7 +1,15 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
-import { Upload, FileType, Image, Video, X } from 'lucide-react';
+import {
+  Upload,
+  FileType,
+  Image,
+  Video,
+  X,
+  Globe,
+  Link as LinkIcon,
+} from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
@@ -30,6 +38,16 @@ const PresentationUpload = ({ lessonId, onUploadComplete }) => {
   const [showVideoDialog, setShowVideoDialog] = useState(false);
   const [videoFiles, setVideoFiles] = useState([]);
   const [videoMetadata, setVideoMetadata] = useState([]);
+
+  // New state for Online Presentation link dialog
+  const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [linkData, setLinkData] = useState({
+    title: '',
+    url: '',
+    description: '',
+  });
+  const [linkUploading, setLinkUploading] = useState(false);
+  const [linkError, setLinkError] = useState('');
 
   const onImageDrop = useCallback(
     async (acceptedFiles) => {
@@ -148,6 +166,54 @@ const PresentationUpload = ({ lessonId, onUploadComplete }) => {
     }
   };
 
+  // New function to handle online presentation link submission
+  const handleLinkSubmit = async () => {
+    // Validate URL format
+    if (!linkData.url.trim() || !isValidUrl(linkData.url)) {
+      setLinkError('Please enter a valid URL');
+      return;
+    }
+
+    setLinkUploading(true);
+    setLinkError('');
+
+    try {
+      // Send the link data to the backend
+      const response = await axios.post(
+        `/api/lessons/${lessonId}/presentations/link`,
+        {
+          title: linkData.title || 'Online Presentation',
+          url: linkData.url,
+          description: linkData.description,
+          content_type: 'link',
+        }
+      );
+
+      if (response.data.success) {
+        onUploadComplete(response.data.presentations);
+        setShowLinkDialog(false);
+        setLinkData({ title: '', url: '', description: '' });
+        toast.success('Online presentation link added successfully!');
+      }
+    } catch (error) {
+      console.error('Link upload error:', error);
+      setLinkError(error.response?.data?.message || 'Failed to add link');
+      toast.error('Failed to add online presentation link');
+    } finally {
+      setLinkUploading(false);
+    }
+  };
+
+  // Helper function to validate URL
+  const isValidUrl = (string) => {
+    try {
+      new URL(string);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
+
   const updateVideoMetadata = (index, field, value) => {
     const updatedMetadata = [...videoMetadata];
     updatedMetadata[index] = {
@@ -191,7 +257,7 @@ const PresentationUpload = ({ lessonId, onUploadComplete }) => {
     <div className="space-y-6">
       {/* Added a container with glass-morphism effect */}
       <div className="bg-white/80 backdrop-blur-sm rounded-xl p-6 shadow-lg">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Left side - Images and PPT uploads */}
           <div className="space-y-4">
             <h3 className="text-center font-medium text-lg text-blue-700">
@@ -263,6 +329,39 @@ const PresentationUpload = ({ lessonId, onUploadComplete }) => {
                   )}
                 </CardContent>
               </Card>
+            )}
+          </div>
+
+          {/* Middle - Online Presentation Links */}
+          <div className="space-y-4">
+            <h3 className="text-center font-medium text-lg text-purple-700">
+              Online Presentation
+            </h3>
+            <div
+              onClick={() => setShowLinkDialog(true)}
+              className={`
+                border-2 border-dashed rounded-lg p-8 text-center transition-colors
+                border-purple-300 bg-white/50
+                cursor-pointer hover:bg-purple-50/70
+                shadow-sm backdrop-blur-sm
+              `}
+            >
+              <div className="bg-purple-100 rounded-full p-3 w-16 h-16 mx-auto mb-4">
+                <Globe className="w-10 h-10 mx-auto text-purple-500" />
+              </div>
+              <p className="text-purple-800 font-medium">
+                Add Online Presentation Link
+              </p>
+              <p className="text-sm text-purple-600 mt-2">
+                Google Slides, Prezi, or any other online presentation
+              </p>
+              <p className="text-sm text-purple-600">Click to add a link</p>
+            </div>
+
+            {linkError && (
+              <p className="text-sm text-red-500 text-center bg-red-50/90 p-2 rounded-md">
+                {linkError}
+              </p>
             )}
           </div>
 
@@ -401,6 +500,93 @@ const PresentationUpload = ({ lessonId, onUploadComplete }) => {
               }
             >
               {videoUploading ? 'Uploading...' : 'Upload Videos'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Online Presentation Link Dialog */}
+      <Dialog open={showLinkDialog} onOpenChange={setShowLinkDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Online Presentation Link</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="link-title">Title</Label>
+              <Input
+                id="link-title"
+                placeholder="Enter presentation title"
+                value={linkData.title}
+                onChange={(e) =>
+                  setLinkData({ ...linkData, title: e.target.value })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="link-url">
+                URL <span className="text-red-500">*</span>
+              </Label>
+              <div className="flex relative">
+                <LinkIcon className="w-4 h-4 absolute left-3 top-2.5 text-gray-500" />
+                <Input
+                  id="link-url"
+                  placeholder="https://..."
+                  value={linkData.url}
+                  onChange={(e) =>
+                    setLinkData({ ...linkData, url: e.target.value })
+                  }
+                  className="pl-9"
+                  required
+                />
+              </div>
+              <p className="text-xs text-gray-500">
+                Enter a valid URL including https://
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="link-description">Description</Label>
+              <Textarea
+                id="link-description"
+                placeholder="Enter a description (optional)"
+                value={linkData.description}
+                onChange={(e) =>
+                  setLinkData({ ...linkData, description: e.target.value })
+                }
+                className="resize-none h-24"
+              />
+            </div>
+
+            {linkError && (
+              <p className="text-sm text-red-500 bg-red-50 p-2 rounded-md">
+                {linkError}
+              </p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowLinkDialog(false);
+                setLinkData({ title: '', url: '', description: '' });
+                setLinkError('');
+              }}
+              disabled={linkUploading}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleLinkSubmit}
+              disabled={linkUploading}
+              className={
+                linkUploading ? '' : 'bg-purple-600 hover:bg-purple-700'
+              }
+            >
+              {linkUploading ? 'Adding...' : 'Add Link'}
             </Button>
           </DialogFooter>
         </DialogContent>

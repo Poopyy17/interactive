@@ -12,7 +12,7 @@ export const createTables = async () => {
       DO $$
       BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'content_type') THEN
-          CREATE TYPE content_type AS ENUM ('powerpoint', 'image', 'video');
+          CREATE TYPE content_type AS ENUM ('powerpoint', 'image', 'video', 'link');
         END IF;
       END
       $$;

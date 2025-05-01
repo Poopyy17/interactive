@@ -218,4 +218,202 @@ lessonRouter.post(
   }
 );
 
+// POST upload link for a lesson
+lessonRouter.post('/:lessonId/presentations/link', async (req, res) => {
+  const { lessonId } = req.params;
+  const { title, url, description } = req.body;
+  const userId = 1; // Hardcoded for now, should come from auth token
+
+  try {
+    // Validate that URL is included
+    if (!url) {
+      return res.status(400).json({
+        success: false,
+        message: 'URL is required',
+      });
+    }
+
+    // Get the next display order
+    const orderResult = await pool.query(
+      'SELECT COALESCE(MAX(display_order), 0) + 1 as next_order FROM presentations WHERE lesson_id = $1',
+      [lessonId]
+    );
+    const displayOrder = orderResult.rows[0].next_order;
+
+    // Insert the link as a presentation
+    const result = await pool.query(
+      `INSERT INTO presentations 
+       (lesson_id, content_type, file_url, title, description, display_order, created_by) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7) 
+       RETURNING *`,
+      [
+        lessonId,
+        'link',
+        url, // Store the URL directly in the file_url field
+        title || 'Online Presentation',
+        description,
+        displayOrder,
+        userId,
+      ]
+    );
+
+    res.json({
+      success: true,
+      presentations: [result.rows[0]],
+    });
+  } catch (error) {
+    console.error('Error adding presentation link:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to add presentation link',
+    });
+  }
+});
+
+// Update lesson title
+lessonRouter.put('/:lessonId', async (req, res) => {
+  const { lessonId } = req.params;
+  const { title } = req.body;
+
+  try {
+    const result = await pool.query(
+      'UPDATE lessons SET title = $1 WHERE id = $2 RETURNING *',
+      [title, lessonId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Lesson not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      lesson: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Error updating lesson:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update lesson',
+    });
+  }
+});
+
+// Delete lesson and all its content
+lessonRouter.delete('/:lessonId', async (req, res) => {
+  const { lessonId } = req.params;
+
+  try {
+    // First get paths to all presentation files to delete them
+    const presentationsResult = await pool.query(
+      'SELECT file_url FROM presentations WHERE lesson_id = $1',
+      [lessonId]
+    );
+
+    // Delete the lesson (cascade will delete presentations, games, etc.)
+    const result = await pool.query(
+      'DELETE FROM lessons WHERE id = $1 RETURNING *',
+      [lessonId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Lesson not found',
+      });
+    }
+
+    // Delete associated files from uploads folder
+    // This runs after DB deletion to avoid orphaned files if DB operation fails
+    for (const presentation of presentationsResult.rows) {
+      const filePath = path.join(
+        __dirname,
+        '../uploads',
+        presentation.file_url
+      );
+      await fs
+        .remove(filePath)
+        .catch((err) =>
+          console.error(`Failed to delete file ${filePath}:`, err)
+        );
+    }
+
+    res.json({
+      success: true,
+      message: 'Lesson and all associated content deleted successfully',
+    });
+  } catch (error) {
+    console.error('Error deleting lesson:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete lesson',
+    });
+  }
+});
+
+// DELETE a specific presentation/upload
+lessonRouter.delete('/presentations/:presentationId', async (req, res) => {
+  const { presentationId } = req.params;
+
+  try {
+    // First get the file URL to delete the actual file
+    const fileResult = await pool.query(
+      'SELECT file_url FROM presentations WHERE id = $1',
+      [presentationId]
+    );
+
+    if (fileResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Presentation not found',
+      });
+    }
+
+    const fileUrl = fileResult.rows[0].file_url;
+
+    // Delete the presentation from the database
+    const result = await pool.query(
+      'DELETE FROM presentations WHERE id = $1 RETURNING *',
+      [presentationId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Presentation not found',
+      });
+    }
+
+    // Delete the file from the file system
+    const filePath = path.join(__dirname, '../uploads', fileUrl);
+    await fs
+      .remove(filePath)
+      .catch((err) => console.error(`Failed to delete file ${filePath}:`, err));
+
+    // Re-order remaining presentations if needed (to maintain continuous display_order)
+    const presentationData = result.rows[0];
+    await pool.query(
+      `UPDATE presentations 
+       SET display_order = display_order - 1 
+       WHERE lesson_id = $1 
+         AND display_order > $2`,
+      [presentationData.lesson_id, presentationData.display_order]
+    );
+
+    res.json({
+      success: true,
+      message: 'Presentation deleted successfully',
+      presentation: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Error deleting presentation:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete presentation',
+    });
+  }
+});
+
 export default lessonRouter;

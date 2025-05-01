@@ -117,13 +117,13 @@ const Quarter = () => {
                     </div>
 
                     <div className="absolute bottom-4 left-4">
-                      <h3 className="text-white font-medium text-xl">
+                      <h3 className="text-white font-bold text-3xl">
                         {quarter.name}
                       </h3>
                     </div>
                   </div>
                   <CardContent className="bg-white p-5 flex-1 flex flex-col justify-between">
-                    <p className="text-gray-700 line-clamp-3">
+                    <p className="text-gray-700 text-xl line-clamp-3">
                       {quarter.description}
                     </p>
 

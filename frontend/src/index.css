@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Comic+Neue:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&family=Inter:opsz,wght@14..32,500&display=swap');
 
 @import 'tailwindcss';
 
@@ -8,8 +8,8 @@
 
 :root {
   --radius: 0.625rem;
-  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
-    Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-sans: 'Comic Sans MS', 'Chalkboard SE', system-ui, -apple-system,
+    BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --background: oklch(1 0 0);
   --foreground: oklch(0.129 0.042 264.695);
   --card: oklch(1 0 0);
@@ -222,4 +222,26 @@
 
 .playful-background .pulse-animation {
   animation: pulse 5s ease-in-out infinite;
+}
+
+@keyframes initial-bounce {
+  0% {
+    transform: translateY(0);
+  }
+  60% {
+    transform: translateY(-6px);
+  }
+  100% {
+    transform: translateY(-4px);
+  }
+}
+
+.hover-bounce {
+  transition: transform 0.2s ease, box-shadow 0.3s ease;
+}
+
+.hover-bounce:hover {
+  animation: initial-bounce 0.3s ease forwards;
+  box-shadow: 0 6px 12px -2px rgba(0, 0, 0, 0.15),
+    0 3px 7px -3px rgba(0, 0, 0, 0.1);
 }

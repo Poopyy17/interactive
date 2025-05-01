@@ -47,10 +47,10 @@ const Header = () => {
           <nav className="flex items-center space-x-4">
             <button
               onClick={() => navigate('/quarter')}
-              className={`text-lg font-medium px-4 py-2 rounded-md transition-colors ${
+              className={`text-lg font-medium px-4 py-2 rounded-md transition-colors cursor-pointer ${
                 isActive('/quarter')
                   ? 'bg-blue-700/50 text-white'
-                  : 'text-blue-100 hover:bg-blue-700/30 hover:text-white'
+                  : 'text-blue-100 hover:bg-gray-500/50 hover:text-white'
               }`}
             >
               Home
@@ -58,10 +58,10 @@ const Header = () => {
 
             <button
               onClick={() => navigate('/about')}
-              className={`text-lg font-medium px-4 py-2 rounded-md transition-colors ${
+              className={`text-lg font-medium px-4 py-2 rounded-md transition-colors cursor-pointer ${
                 isActive('/about')
                   ? 'bg-blue-700/50 text-white'
-                  : 'text-blue-100 hover:bg-blue-700/30 hover:text-white'
+                  : 'text-blue-100 hover:bg-gray-500/50 hover:text-white'
               }`}
             >
               About
@@ -69,10 +69,10 @@ const Header = () => {
 
             <button
               onClick={() => navigate('/instructions')}
-              className={`text-lg font-medium px-4 py-2 rounded-md transition-colors ${
+              className={`text-lg font-medium px-4 py-2 rounded-md transition-colors cursor-pointer ${
                 isActive('/about')
                   ? 'bg-blue-700/50 text-white'
-                  : 'text-blue-100 hover:bg-blue-700/30 hover:text-white'
+                  : 'text-blue-100 hover:bg-gray-500/50 hover:text-white'
               }`}
             >
               Instructions
