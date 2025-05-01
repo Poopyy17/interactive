@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import cloudinary from 'cloudinary';
 import { promisify } from 'util';
 import dotenv from 'dotenv';
+import { Readable } from 'stream';
 
 dotenv.config();
 const lessonRouter = express.Router();
