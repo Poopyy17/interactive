@@ -13,8 +13,20 @@ dotenv.config();
 
 const app = express();
 
+// CORS configuration with specific allowed origins
+const corsOptions = {
+  origin: [
+    'https://interactive-frontend-taupe.vercel.app', // Production frontend
+    'http://localhost:5173', // Local frontend development
+    'http://localhost:3000', // Alternative local development port
+  ],
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  credentials: true,
+  optionsSuccessStatus: 204,
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' })); // Increased limit for base64 image uploads
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
