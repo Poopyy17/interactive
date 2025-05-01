@@ -14,7 +14,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        // http://localhost:5000
+        target: 'https://interactive-6ygcqu4dw-poopyy17s-projects.vercel.app',
         changeOrigin: true,
       },
       '/uploads': {
