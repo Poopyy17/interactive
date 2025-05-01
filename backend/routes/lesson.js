@@ -46,25 +46,38 @@ const upload = multer({
 });
 
 const uploadToCloudinary = async (file) => {
-  // Create a temporary file to upload
-  const tempFilePath = path.join(__dirname, '../uploads/temp-' + Date.now());
-  await fs.writeFile(tempFilePath, file.buffer);
-
   try {
-    // Upload to Cloudinary
-    const uploadResult = await cloudinary.v2.uploader.upload(tempFilePath, {
-      resource_type: 'auto',
-      folder: 'interactive_lessons',
+    // Create a promise-based upload stream
+    const uploadPromise = new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.v2.uploader.upload_stream(
+        {
+          resource_type: 'auto',
+          folder: 'interactive_lessons',
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+
+      // Create a readable stream from buffer and pipe to uploadStream
+      const bufferStream = new Readable();
+      bufferStream.push(file.buffer);
+      bufferStream.push(null);
+      bufferStream.pipe(uploadStream);
     });
+
+    // Wait for upload to complete
+    const uploadResult = await uploadPromise;
 
     // Return the Cloudinary URL and public ID
     return {
       url: uploadResult.secure_url,
       publicId: uploadResult.public_id,
     };
-  } finally {
-    // Clean up temp file
-    await fs.remove(tempFilePath).catch(console.error);
+  } catch (error) {
+    console.error('Cloudinary upload error:', error);
+    throw error;
   }
 };
 
