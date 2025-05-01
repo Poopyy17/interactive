@@ -766,6 +766,32 @@ const MatchingGameSettings = ({
                                   Image uploaded
                                 </span>
                               )}
+
+                              {choice.image && (
+                                <div className="flex items-center gap-2 mt-2">
+                                  <img
+                                    src={choice.image}
+                                    alt="Item image"
+                                    className="h-10 w-auto object-contain border rounded"
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      handleFirstChoiceChange(
+                                        roundIndex,
+                                        choiceIndex,
+                                        'image',
+                                        null
+                                      );
+                                    }}
+                                    className="text-red-500 hover:text-red-700"
+                                  >
+                                    Remove
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -856,6 +882,32 @@ const MatchingGameSettings = ({
                                   <Link2 className="w-3 h-3 mr-1" />
                                   Image uploaded
                                 </span>
+                              )}
+
+                              {choice.image && (
+                                <div className="flex items-center gap-2 mt-2">
+                                  <img
+                                    src={choice.image}
+                                    alt="Item image"
+                                    className="h-10 w-auto object-contain border rounded"
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      handleFirstChoiceChange(
+                                        roundIndex,
+                                        choiceIndex,
+                                        'image',
+                                        null
+                                      );
+                                    }}
+                                    className="text-red-500 hover:text-red-700"
+                                  >
+                                    Remove
+                                  </Button>
+                                </div>
                               )}
                             </div>
                           </div>

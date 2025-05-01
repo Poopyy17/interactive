@@ -1,27 +1,26 @@
 import express from 'express';
 import { pool } from '../config/db.js';
 import multer from 'multer';
-import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import cloudinary from 'cloudinary';
+import { Readable } from 'stream';
+import dotenv from 'dotenv';
 
 const gameRouter = express.Router();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Configure multer for file upload
-const storage = multer.diskStorage({
-  destination: async (req, file, cb) => {
-    const uploadDir = './uploads';
-    await fs.ensureDir(uploadDir);
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  },
+// Configure Cloudinary
+cloudinary.v2.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_SECRET,
 });
+
+// Configure multer to use memory storage instead of disk storage
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
@@ -44,6 +43,43 @@ const upload = multer({
     }
   },
 });
+
+// Function to upload file to Cloudinary
+const uploadToCloudinary = async (file) => {
+  try {
+    // Create a promise-based upload stream
+    const uploadPromise = new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.v2.uploader.upload_stream(
+        {
+          resource_type: 'auto',
+          folder: 'interactive_games',
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+
+      // Create a readable stream from buffer and pipe to uploadStream
+      const bufferStream = new Readable();
+      bufferStream.push(file.buffer);
+      bufferStream.push(null);
+      bufferStream.pipe(uploadStream);
+    });
+
+    // Wait for upload to complete
+    const uploadResult = await uploadPromise;
+
+    // Return the Cloudinary URL and public ID
+    return {
+      url: uploadResult.secure_url,
+      publicId: uploadResult.public_id,
+    };
+  } catch (error) {
+    console.error('Cloudinary upload error:', error);
+    throw error;
+  }
+};
 
 // Fetch games for a lesson
 gameRouter.get('/lessons/:lessonId/games', async (req, res) => {
@@ -453,10 +489,14 @@ gameRouter.post('/upload-image', upload.single('image'), async (req, res) => {
       });
     }
 
-    // Return the file URL
+    // Upload to Cloudinary instead of saving locally
+    const cloudinaryResult = await uploadToCloudinary(req.file);
+
+    // Return the Cloudinary URL instead of local filename
     res.json({
       success: true,
-      imageUrl: req.file.filename,
+      imageUrl: cloudinaryResult.url,
+      publicId: cloudinaryResult.publicId,
     });
   } catch (error) {
     console.error('Error uploading image:', error);

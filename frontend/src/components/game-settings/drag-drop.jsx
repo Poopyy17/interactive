@@ -75,6 +75,7 @@ const DragDropSettings = ({
           blankPosition: round.blank_position,
           choices: round.choices.map((choice) => ({
             word: choice.word,
+            image: choice.image_url,
             isCorrect: choice.is_correct,
           })),
         }));
@@ -495,7 +496,7 @@ const DragDropSettings = ({
                         {choice.image && (
                           <div className="flex items-center gap-2">
                             <img
-                              src={`/uploads/${choice.image}`}
+                              src={choice.image}
                               alt="Choice image"
                               className="h-10 w-auto object-contain"
                             />

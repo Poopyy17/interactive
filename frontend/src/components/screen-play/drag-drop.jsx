@@ -339,7 +339,7 @@ const GamePlay = () => {
                     >
                       {droppedAnswer.image_url ? (
                         <img
-                          src={`/uploads/${droppedAnswer.image_url}`}
+                          src={droppedAnswer.image_url}
                           alt="Answer"
                           className="h-16 mx-auto object-contain"
                         />
@@ -370,7 +370,7 @@ const GamePlay = () => {
                     {choice.image_url ? (
                       <div className="flex flex-col items-center gap-1">
                         <img
-                          src={`/uploads/${choice.image_url}`}
+                          src={choice.image_url}
                           alt={choice.word || 'Choice'}
                           className="h-12 w-auto object-contain"
                         />

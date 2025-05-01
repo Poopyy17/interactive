@@ -442,7 +442,7 @@ const MatchingGamePlay = () => {
                           <div className="flex-1 flex items-center justify-start">
                             {choice.image_url ? (
                               <img
-                                src={`/uploads/${choice.image_url}`}
+                                src={choice.image_url}
                                 alt={choice.word || 'Image'}
                                 className="max-h-20 max-w-full object-contain mr-3"
                               />
@@ -502,7 +502,7 @@ const MatchingGamePlay = () => {
                           <div className="flex-1 flex items-center justify-end">
                             {choice.image_url ? (
                               <img
-                                src={`/uploads/${choice.image_url}`}
+                                src={choice.image_url}
                                 alt={choice.word || 'Image'}
                                 className="max-h-20 max-w-full object-contain ml-3"
                               />
