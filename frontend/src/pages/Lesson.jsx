@@ -133,30 +133,38 @@ const LessonDetails = () => {
 
   // function to get the correct media URL
   const getMediaUrl = (presentation) => {
-    const baseUrl = 'http://localhost:5000/uploads/';
-    const filePath = presentation.file_url;
-
-    // For PowerPoint files that have been converted to PDF
-    if (presentation.content_type === 'powerpoint') {
-      return `${baseUrl}${filePath}#view=FitH`;
+    // For link type, return the URL directly
+    if (presentation.content_type === 'link') {
+      return presentation.file_url;
     }
-
-    // For images and videos, use relative path
-    return `/uploads/${filePath}`;
+    return presentation.file_url;
   };
 
   const handleDownload = async (presentation) => {
     try {
-      const url = getMediaUrl(presentation);
+      // For Cloudinary-hosted files, we can use the URL directly
+      const url = presentation.file_url;
+
+      // Open the URL in a new tab or trigger download
+      window.open(url, '_blank');
+
+      // Alternative: Use the fetch API to download the file
+      // This might be better for some file types
+      /*
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = url;
-      link.download = `presentation-${presentation.id}.pptx`; // or any name you want
+      link.href = downloadUrl;
+      link.download = presentation.title || `presentation-${presentation.id}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+      */
     } catch (error) {
       console.error('Download error:', error);
-      setError('Failed to download file');
+      toast.error('Failed to download file');
     }
   };
 
@@ -350,7 +358,7 @@ const LessonDetails = () => {
               {/* Video Preview - Left side */}
               <div className="relative aspect-video overflow-hidden bg-slate-100">
                 <video
-                  src={getMediaUrl(presentation)}
+                  src={presentation.file_url}
                   className="h-full w-full object-cover"
                 />
                 <div className="absolute inset-0 flex items-center justify-center bg-black/40 transition-opacity group-hover:bg-black/30">

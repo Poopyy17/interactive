@@ -46,6 +46,7 @@ export const createTables = async () => {
         lesson_id INTEGER REFERENCES lessons(id) ON DELETE CASCADE,
         content_type content_type NOT NULL,
         file_url TEXT NOT NULL,
+        cloudinary_id TEXT,
         title VARCHAR(255),
         description TEXT,
         display_order INTEGER NOT NULL,

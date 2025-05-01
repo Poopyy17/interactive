@@ -9,6 +9,7 @@ import authRouter from './routes/auth.js';
 import quarterRouter from './routes/quarter.js';
 import lessonRouter from './routes/lesson.js';
 import gameRouter from './routes/game.js';
+import fs from 'fs-extra';
 
 // Load environment variables
 dotenv.config();
@@ -23,8 +24,14 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve uploaded files statically
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Create uploads directory if it doesn't exist (needed for temp files)
+const uploadsDir = path.join(__dirname, 'uploads');
+fs.ensureDirSync(uploadsDir);
+
+// Serve uploaded files statically (only needed during development)
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/uploads', express.static(uploadsDir));
+}
 
 // Mount routes
 app.use('/api/auth', authRouter);
@@ -34,25 +41,38 @@ app.use('/api/game', gameRouter);
 
 // Health check route
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ message: 'Server is running' });
+  res.status(200).json({
+    message: 'Server is running',
+    environment: process.env.NODE_ENV || 'development',
+  });
 });
 
 // Define port
 const PORT = process.env.PORT || 5000;
 
-// Start server
-app.listen(PORT, async () => {
-  console.log(`Server is running on port ${PORT}`);
-
+// Initialize database - for non-serverless environments
+const initDatabase = async () => {
   try {
     // Test database connection and create tables
     await pool.connect();
     console.log('Successfully connected to database');
     await createTables();
   } catch (err) {
-    console.error('Error during startup:', err.stack);
+    console.error('Error during database initialization:', err.stack);
   }
-});
+};
+
+// Only run server.listen in non-Vercel environments
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  app.listen(PORT, async () => {
+    console.log(`Server is running on port ${PORT}`);
+    await initDatabase();
+  });
+} else {
+  // In Vercel, we don't need to start a server, but we may want to initialize DB
+  // This would run once during the build process
+  initDatabase();
+}
 
 // Global error handler
 app.use((err, req, res, next) => {
@@ -62,3 +82,6 @@ app.use((err, req, res, next) => {
     error: process.env.NODE_ENV === 'development' ? err.message : {},
   });
 });
+
+// For Vercel serverless deployment
+export default app;

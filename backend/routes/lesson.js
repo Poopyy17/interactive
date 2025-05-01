@@ -4,24 +4,25 @@ import multer from 'multer';
 import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import cloudinary from 'cloudinary';
+import { promisify } from 'util';
+import dotenv from 'dotenv';
 
+dotenv.config();
 const lessonRouter = express.Router();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Configure multer for file upload
-const storage = multer.diskStorage({
-  destination: async (req, file, cb) => {
-    const uploadDir = './uploads';
-    await fs.ensureDir(uploadDir);
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  },
+// Configure Cloudinary
+cloudinary.v2.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_SECRET,
 });
+
+// Use memory storage for multer to get buffer
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
@@ -43,6 +44,29 @@ const upload = multer({
     }
   },
 });
+
+const uploadToCloudinary = async (file) => {
+  // Create a temporary file to upload
+  const tempFilePath = path.join(__dirname, '../uploads/temp-' + Date.now());
+  await fs.writeFile(tempFilePath, file.buffer);
+
+  try {
+    // Upload to Cloudinary
+    const uploadResult = await cloudinary.v2.uploader.upload(tempFilePath, {
+      resource_type: 'auto',
+      folder: 'interactive_lessons',
+    });
+
+    // Return the Cloudinary URL and public ID
+    return {
+      url: uploadResult.secure_url,
+      publicId: uploadResult.public_id,
+    };
+  } finally {
+    // Clean up temp file
+    await fs.remove(tempFilePath).catch(console.error);
+  }
+};
 
 // fetch all lessons for a specific quarter
 lessonRouter.get('/:quarterId/lessons', async (req, res) => {
@@ -150,7 +174,7 @@ lessonRouter.post(
   async (req, res) => {
     const { lessonId } = req.params;
     const files = req.files;
-    const { titles, descriptions } = req.body; // Parse metadata as JSON from request body
+    const { titles, descriptions } = req.body;
     const userId = 1; // Hardcoded for now, should come from auth token
 
     try {
@@ -178,16 +202,20 @@ lessonRouter.post(
           description = descriptions[i];
         }
 
-        // Insert the presentation with title and description
+        // Upload file to Cloudinary
+        const cloudinaryResult = await uploadToCloudinary(file);
+
+        // Insert the presentation with Cloudinary URL
         const result = await pool.query(
           `INSERT INTO presentations 
-           (lesson_id, content_type, file_url, title, description, display_order, created_by) 
-           VALUES ($1, $2, $3, $4, $5, $6, $7) 
+           (lesson_id, content_type, file_url, cloudinary_id, title, description, display_order, created_by) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
            RETURNING *`,
           [
             lessonId,
             file.contentType,
-            file.filename,
+            cloudinaryResult.url,
+            cloudinaryResult.publicId,
             title,
             description,
             displayOrder,
@@ -203,12 +231,6 @@ lessonRouter.post(
         presentations,
       });
     } catch (error) {
-      // Delete uploaded files if operation fails
-      for (const file of files) {
-        const filePath = path.join(__dirname, '../uploads', file.filename);
-        await fs.remove(filePath).catch(console.error);
-      }
-
       console.error('Error uploading presentations:', error);
       res.status(500).json({
         success: false,
@@ -308,7 +330,7 @@ lessonRouter.delete('/:lessonId', async (req, res) => {
   try {
     // First get paths to all presentation files to delete them
     const presentationsResult = await pool.query(
-      'SELECT file_url FROM presentations WHERE lesson_id = $1',
+      'SELECT file_url, cloudinary_id FROM presentations WHERE lesson_id = $1',
       [lessonId]
     );
 
@@ -325,19 +347,18 @@ lessonRouter.delete('/:lessonId', async (req, res) => {
       });
     }
 
-    // Delete associated files from uploads folder
-    // This runs after DB deletion to avoid orphaned files if DB operation fails
+    // Delete associated files from Cloudinary
     for (const presentation of presentationsResult.rows) {
-      const filePath = path.join(
-        __dirname,
-        '../uploads',
-        presentation.file_url
-      );
-      await fs
-        .remove(filePath)
-        .catch((err) =>
-          console.error(`Failed to delete file ${filePath}:`, err)
-        );
+      if (presentation.cloudinary_id) {
+        try {
+          await cloudinary.v2.uploader.destroy(presentation.cloudinary_id);
+        } catch (err) {
+          console.error(
+            `Failed to delete file from Cloudinary: ${presentation.cloudinary_id}`,
+            err
+          );
+        }
+      }
     }
 
     res.json({
@@ -358,9 +379,9 @@ lessonRouter.delete('/presentations/:presentationId', async (req, res) => {
   const { presentationId } = req.params;
 
   try {
-    // First get the file URL to delete the actual file
+    // First get the file info to delete from Cloudinary
     const fileResult = await pool.query(
-      'SELECT file_url FROM presentations WHERE id = $1',
+      'SELECT file_url, cloudinary_id FROM presentations WHERE id = $1',
       [presentationId]
     );
 
@@ -371,7 +392,7 @@ lessonRouter.delete('/presentations/:presentationId', async (req, res) => {
       });
     }
 
-    const fileUrl = fileResult.rows[0].file_url;
+    const cloudinaryId = fileResult.rows[0].cloudinary_id;
 
     // Delete the presentation from the database
     const result = await pool.query(
@@ -386,13 +407,19 @@ lessonRouter.delete('/presentations/:presentationId', async (req, res) => {
       });
     }
 
-    // Delete the file from the file system
-    const filePath = path.join(__dirname, '../uploads', fileUrl);
-    await fs
-      .remove(filePath)
-      .catch((err) => console.error(`Failed to delete file ${filePath}:`, err));
+    // Delete the file from Cloudinary if it exists
+    if (cloudinaryId) {
+      try {
+        await cloudinary.v2.uploader.destroy(cloudinaryId);
+      } catch (err) {
+        console.error(
+          `Failed to delete file from Cloudinary: ${cloudinaryId}`,
+          err
+        );
+      }
+    }
 
-    // Re-order remaining presentations if needed (to maintain continuous display_order)
+    // Re-order remaining presentations if needed
     const presentationData = result.rows[0];
     await pool.query(
       `UPDATE presentations 
