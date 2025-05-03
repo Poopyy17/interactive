@@ -30,6 +30,9 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '100mb' })); // Increased limit for base64 image uploads
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
+// Set up raw body parsing with increased limits
+app.use(express.raw({ type: 'application/octet-stream', limit: '100mb' }));
+
 // Mount routes
 app.use('/api/auth', authRouter);
 app.use('/api/quarters', quarterRouter);
