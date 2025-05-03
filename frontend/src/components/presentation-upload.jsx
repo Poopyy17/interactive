@@ -292,7 +292,7 @@ const PresentationUpload = ({ lessonId, onUploadComplete }) => {
               <p className="text-sm text-blue-600 mt-2">
                 PowerPoint (.pptx), Images (.jpg, .png)
               </p>
-              <p className="text-sm text-blue-600">Maximum file size: 100MB</p>
+              <p className="text-sm text-blue-600">Maximum file size: 5MB</p>
             </div>
 
             {imageError && (
@@ -399,7 +399,7 @@ const PresentationUpload = ({ lessonId, onUploadComplete }) => {
               <p className="text-sm text-green-600 mt-2">
                 Video formats: MP4, WebM
               </p>
-              <p className="text-sm text-green-600">Maximum file size: 100MB</p>
+              <p className="text-sm text-green-600">Maximum file size: 5MB</p>
             </div>
 
             {videoError && (
