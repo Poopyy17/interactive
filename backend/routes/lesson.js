@@ -4,10 +4,11 @@ import multer from 'multer';
 import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import cloudinary from 'cloudinary';
 import { promisify } from 'util';
 import dotenv from 'dotenv';
 import { Readable } from 'stream';
+import { put, del, list } from '@vercel/blob';
+import mediaCompressor from '../config/mediaCompressor.js';
 
 dotenv.config();
 const lessonRouter = express.Router();
@@ -15,19 +16,18 @@ const lessonRouter = express.Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Configure Cloudinary
-cloudinary.v2.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_SECRET,
-});
+// Get Vercel Blob token from environment variables
+const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+if (!blobToken) {
+  console.warn('BLOB_READ_WRITE_TOKEN not found in environment variables');
+}
 
 // Use memory storage for multer to get buffer
 const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
-   limits: {
+  limits: {
     fileSize: 100 * 1024 * 1024, // 100 MB
   },
   fileFilter: (req, file, cb) => {
@@ -49,39 +49,45 @@ const upload = multer({
   },
 });
 
-const uploadToCloudinary = async (file) => {
+// Function to upload to Vercel Blob
+const uploadToVercelBlob = async (file) => {
   try {
-    // Create a promise-based upload stream
-    const uploadPromise = new Promise((resolve, reject) => {
-      const uploadStream = cloudinary.v2.uploader.upload_stream(
-        {
-          resource_type: 'auto',
-          folder: 'interactive_lessons',
-        },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        }
-      );
+    // Generate a unique filename based on original name and timestamp
+    const timestamp = Date.now();
+    const originalName = file.originalname || `file-${timestamp}`;
+    const sanitizedName = originalName.replace(/[^a-zA-Z0-9.-]/g, '-');
+    const fileName = `${timestamp}-${sanitizedName}`;
 
-      // Create a readable stream from buffer and pipe to uploadStream
-      const bufferStream = new Readable();
-      bufferStream.push(file.buffer);
-      bufferStream.push(null);
-      bufferStream.pipe(uploadStream);
+    // Define the folder structure within Vercel Blob
+    const folderPath = 'interactive_lessons';
+    const fullPath = `${folderPath}/${fileName}`;
+
+    // Upload the file to Vercel Blob with token
+    const blob = await put(fullPath, file.buffer, {
+      access: 'public',
+      contentType: file.mimetype,
+      token: blobToken,
     });
 
-    // Wait for upload to complete
-    const uploadResult = await uploadPromise;
-
-    // Return the Cloudinary URL and public ID
+    // Return data structure that matches what the frontend expects
     return {
-      url: uploadResult.secure_url,
-      publicId: uploadResult.public_id,
+      url: blob.url,
+      publicId: fullPath, // Store the full path as publicId for deletion later
     };
   } catch (error) {
-    console.error('Cloudinary upload error:', error);
+    console.error('Vercel Blob upload error:', error);
     throw error;
+  }
+};
+
+const deleteFromVercelBlob = async (publicId) => {
+  try {
+    if (!publicId) return;
+
+    await del(publicId, { token: blobToken });
+  } catch (error) {
+    console.error(`Error deleting file from Vercel Blob: ${publicId}`, error);
+    // Don't throw, just log error as we don't want deletion errors to break the app flow
   }
 };
 
@@ -188,6 +194,7 @@ lessonRouter.post('/:quarterId/lessons', async (req, res) => {
 lessonRouter.post(
   '/:lessonId/presentations',
   upload.array('files'),
+  mediaCompressor,
   async (req, res) => {
     const { lessonId } = req.params;
     const files = req.files;
@@ -219,10 +226,10 @@ lessonRouter.post(
           description = descriptions[i];
         }
 
-        // Upload file to Cloudinary
-        const cloudinaryResult = await uploadToCloudinary(file);
+        // Upload file to Vercel Blob instead of Cloudinary
+        const blobResult = await uploadToVercelBlob(file);
 
-        // Insert the presentation with Cloudinary URL
+        // Insert the presentation with Vercel Blob URL
         const result = await pool.query(
           `INSERT INTO presentations 
            (lesson_id, content_type, file_url, cloudinary_id, title, description, display_order, created_by) 
@@ -231,8 +238,8 @@ lessonRouter.post(
           [
             lessonId,
             file.contentType,
-            cloudinaryResult.url,
-            cloudinaryResult.publicId,
+            blobResult.url,
+            blobResult.publicId, // Store the path as cloudinary_id for backward compatibility
             title,
             description,
             displayOrder,
@@ -364,14 +371,17 @@ lessonRouter.delete('/:lessonId', async (req, res) => {
       });
     }
 
-    // Delete associated files from Cloudinary
+    // Delete associated files from Vercel Blob
     for (const presentation of presentationsResult.rows) {
-      if (presentation.cloudinary_id) {
+      if (
+        presentation.cloudinary_id &&
+        !presentation.file_url.startsWith('http')
+      ) {
         try {
-          await cloudinary.v2.uploader.destroy(presentation.cloudinary_id);
+          await del(presentation.cloudinary_id);
         } catch (err) {
           console.error(
-            `Failed to delete file from Cloudinary: ${presentation.cloudinary_id}`,
+            `Failed to delete file from Vercel Blob: ${presentation.cloudinary_id}`,
             err
           );
         }
@@ -396,7 +406,7 @@ lessonRouter.delete('/presentations/:presentationId', async (req, res) => {
   const { presentationId } = req.params;
 
   try {
-    // First get the file info to delete from Cloudinary
+    // First get the file info to delete from Vercel Blob
     const fileResult = await pool.query(
       'SELECT file_url, cloudinary_id FROM presentations WHERE id = $1',
       [presentationId]
@@ -409,7 +419,8 @@ lessonRouter.delete('/presentations/:presentationId', async (req, res) => {
       });
     }
 
-    const cloudinaryId = fileResult.rows[0].cloudinary_id;
+    const blobId = fileResult.rows[0].cloudinary_id;
+    const contentType = fileResult.rows[0].content_type;
 
     // Delete the presentation from the database
     const result = await pool.query(
@@ -424,15 +435,12 @@ lessonRouter.delete('/presentations/:presentationId', async (req, res) => {
       });
     }
 
-    // Delete the file from Cloudinary if it exists
-    if (cloudinaryId) {
+    // Only attempt to delete from Vercel Blob if not a link and blob ID exists
+    if (blobId && contentType !== 'link') {
       try {
-        await cloudinary.v2.uploader.destroy(cloudinaryId);
+        await del(blobId);
       } catch (err) {
-        console.error(
-          `Failed to delete file from Cloudinary: ${cloudinaryId}`,
-          err
-        );
+        console.error(`Failed to delete file from Vercel Blob: ${blobId}`, err);
       }
     }
 

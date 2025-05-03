@@ -349,7 +349,7 @@ const LessonDetails = () => {
         {videoItems.map((presentation) => (
           <Card
             key={presentation.id}
-            className="group relative overflow-hidden rounded-xl border-0 bg-white shadow-md transition-all duration-300 hover:shadow-xl"
+            className="group relative overflow-hidden rounded-xl border-0 bg-white shadow-md transition-all duration-300 hover:shadow-xl mb-4"
           >
             <div
               className="cursor-pointer grid grid-cols-1 md:grid-cols-3 gap-4"

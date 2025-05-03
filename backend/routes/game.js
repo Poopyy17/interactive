@@ -3,21 +3,22 @@ import { pool } from '../config/db.js';
 import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import cloudinary from 'cloudinary';
 import { Readable } from 'stream';
 import dotenv from 'dotenv';
+import { put, del } from '@vercel/blob';
+import mediaCompressor from '../config/mediaCompressor.js';
 
 const gameRouter = express.Router();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Configure Cloudinary
-cloudinary.v2.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_SECRET,
-});
+dotenv.config();
+
+const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+if (!blobToken) {
+  console.warn('BLOB_READ_WRITE_TOKEN not found in environment variables');
+}
 
 // Configure multer to use memory storage instead of disk storage
 const storage = multer.memoryStorage();
@@ -44,40 +45,46 @@ const upload = multer({
   },
 });
 
-// Function to upload file to Cloudinary
-const uploadToCloudinary = async (file) => {
+// Function to upload file to Vercel Blob
+const uploadToVercelBlob = async (file) => {
   try {
-    // Create a promise-based upload stream
-    const uploadPromise = new Promise((resolve, reject) => {
-      const uploadStream = cloudinary.v2.uploader.upload_stream(
-        {
-          resource_type: 'auto',
-          folder: 'interactive_games',
-        },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        }
-      );
+    // Generate a unique filename based on original name and timestamp
+    const timestamp = Date.now();
+    const originalName = file.originalname || `image-${timestamp}`;
+    const sanitizedName = originalName.replace(/[^a-zA-Z0-9.-]/g, '-');
+    const fileName = `${timestamp}-${sanitizedName}`;
 
-      // Create a readable stream from buffer and pipe to uploadStream
-      const bufferStream = new Readable();
-      bufferStream.push(file.buffer);
-      bufferStream.push(null);
-      bufferStream.pipe(uploadStream);
+    // Define the folder structure within Vercel Blob
+    const folderPath = 'interactive_games';
+    const fullPath = `${folderPath}/${fileName}`;
+
+    // Upload the file to Vercel Blob with the token
+    const blob = await put(fullPath, file.buffer, {
+      access: 'public',
+      contentType: file.mimetype,
+      token: blobToken,
     });
 
-    // Wait for upload to complete
-    const uploadResult = await uploadPromise;
-
-    // Return the Cloudinary URL and public ID
+    // Return structure similar to Cloudinary for compatibility
     return {
-      url: uploadResult.secure_url,
-      publicId: uploadResult.public_id,
+      url: blob.url,
+      publicId: fullPath, // Store the full path as publicId for deletion later
     };
   } catch (error) {
-    console.error('Cloudinary upload error:', error);
+    console.error('Vercel Blob upload error:', error);
     throw error;
+  }
+};
+
+// Delete file from Vercel Blob
+const deleteFromVercelBlob = async (publicId) => {
+  try {
+    if (!publicId) return;
+
+    await del(publicId, { token: blobToken });
+  } catch (error) {
+    console.error(`Error deleting file from Vercel Blob: ${publicId}`, error);
+    // Don't throw, just log error as we don't want deletion errors to break the app flow
   }
 };
 
@@ -480,32 +487,37 @@ gameRouter.post(
 );
 
 // Upload image for games
-gameRouter.post('/upload-image', upload.single('image'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({
+gameRouter.post(
+  '/upload-image',
+  upload.single('image'),
+  mediaCompressor,
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'No image file provided',
+        });
+      }
+
+      // Upload to Vercel Blob instead of Cloudinary
+      const blobResult = await uploadToVercelBlob(req.file);
+
+      // Return the Vercel Blob URL and ID with same format as before
+      res.json({
+        success: true,
+        imageUrl: blobResult.url,
+        publicId: blobResult.publicId,
+      });
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      res.status(500).json({
         success: false,
-        message: 'No image file provided',
+        message: error.message || 'Failed to upload image',
       });
     }
-
-    // Upload to Cloudinary instead of saving locally
-    const cloudinaryResult = await uploadToCloudinary(req.file);
-
-    // Return the Cloudinary URL instead of local filename
-    res.json({
-      success: true,
-      imageUrl: cloudinaryResult.url,
-      publicId: cloudinaryResult.publicId,
-    });
-  } catch (error) {
-    console.error('Error uploading image:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to upload image',
-    });
   }
-});
+);
 
 // Delete drag and drop game
 gameRouter.delete('/games/drag-drop/:gameId', async (req, res) => {
