@@ -18,7 +18,8 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import Header from '../header';
 import GameBackground from '../GameBackground';
-// No arrow functionality as requested
+import SoundEffects, { GameSounds } from '../SoundEffects';
+import CorrectIncorrectDialog from '../Correct-Incorrect-Dialog';
 
 const ProgressBar = ({ current, total }) => {
   const progress = (current / total) * 100;
@@ -116,6 +117,11 @@ const MatchingGamePlay = () => {
   const [gameComplete, setGameComplete] = useState(false);
   const [isOver, setIsOver] = useState(false);
 
+  // State for dialog
+  const [showDialog, setShowDialog] = useState(false);
+  const [isCorrectMatch, setIsCorrectMatch] = useState(false);
+  const [dialogMessage, setDialogMessage] = useState('');
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -206,10 +212,9 @@ const MatchingGamePlay = () => {
 
     // If either item is already matched, prevent the new match
     if (firstChoiceAlreadyMatched || secondChoiceAlreadyMatched) {
-      toast.error('One or both items are already matched!', {
-        icon: '⚠️',
-        duration: 3000,
-      });
+      setIsCorrectMatch(false);
+      setDialogMessage('One or both items are already matched!');
+      setShowDialog(true);
       return;
     }
 
@@ -236,6 +241,14 @@ const MatchingGamePlay = () => {
     console.log('Expected second choice:', correctMatch.second_choice_id);
 
     if (isCorrectDrop) {
+      // Correct sound effect
+      GameSounds.playCorrect();
+
+      // Show success dialog
+      setIsCorrectMatch(true);
+      setDialogMessage('Great match! You got it right.');
+      setShowDialog(true);
+
       // Add to matches
       const newMatch = {
         firstChoiceId: firstChoiceId,
@@ -243,8 +256,6 @@ const MatchingGamePlay = () => {
       };
 
       setMatches((prev) => [...prev, newMatch]);
-
-      // Match has been made successfully
 
       // Play success animation
       triggerConfetti();
@@ -263,15 +274,20 @@ const MatchingGamePlay = () => {
         }, 2000);
       }
     } else {
-      // Incorrect match
-      toast.error(
-        "That's not the correct match for this item. Try a different combination!",
-        {
-          icon: '❌',
-          duration: 3000,
-        }
+      // Incorrect sound effect
+      GameSounds.playIncorrect();
+
+      // Show incorrect dialog
+      setIsCorrectMatch(false);
+      setDialogMessage(
+        "That's not the correct match for this item. Try a different combination!"
       );
+      setShowDialog(true);
     }
+  };
+
+  const handleDialogContinue = () => {
+    setShowDialog(false);
   };
 
   const handleDragOver = ({ over }) => {
@@ -358,6 +374,7 @@ const MatchingGamePlay = () => {
   return (
     <GameBackground>
       <div className="min-h-screen">
+        <SoundEffects />
         <Header className="bg-white shadow-md" />
 
         <main className="max-w-6xl mx-auto px-4 py-8">
@@ -540,6 +557,15 @@ const MatchingGamePlay = () => {
             )}
           </div>
         </main>
+
+        <CorrectIncorrectDialog
+          show={showDialog}
+          isCorrect={isCorrectMatch}
+          message={dialogMessage}
+          onClose={() => setShowDialog(false)}
+          onContinue={handleDialogContinue}
+          continueText={isCorrectMatch ? 'Continue' : 'Try Again'}
+        />
       </div>
     </GameBackground>
   );

@@ -19,6 +19,8 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import Header from '../header';
 import GameBackground from '../GameBackground';
+import SoundEffects, { GameSounds } from '../SoundEffects';
+import CorrectIncorrectDialog from '../Correct-Incorrect-Dialog';
 
 const replaceBlankWithUniform = (text, replacement = '________') => {
   // This will match any number of consecutive underscores
@@ -106,6 +108,10 @@ const GamePlay = () => {
   const [droppedAnswer, setDroppedAnswer] = useState(null);
   const [dragStartPosition, setDragStartPosition] = useState(null);
 
+  // State for dialog
+  const [showDialog, setShowDialog] = useState(false);
+  const [dialogMessage, setDialogMessage] = useState('');
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -167,8 +173,14 @@ const GamePlay = () => {
     setDroppedAnswer(choice);
 
     if (choice.is_correct) {
+      // Correct sound effect
+      GameSounds.playCorrect();
       setIsCorrect(true);
       triggerConfetti();
+
+      // Show correct dialog
+      setDialogMessage('Great job! You found the correct answer.');
+      setShowDialog(true);
 
       setTimeout(() => {
         if (currentRound + 1 < game.total_rounds) {
@@ -178,16 +190,30 @@ const GamePlay = () => {
         } else {
           setGameComplete(true);
         }
-      }, 5000);
+      }, 3000);
     } else {
-      toast.error("That's not correct. Try again!", {
-        icon: '❌',
-        duration: 5000,
-      });
+      // Incorrect sound effect
+      GameSounds.playIncorrect();
+
+      // Show incorrect dialog
+      setDialogMessage("That's not correct. Try another answer!");
+      setShowDialog(true);
+
       setTimeout(() => {
         setDroppedAnswer(null);
-      }, 5000);
+        setShowDialog(false);
+      }, 3000);
     }
+  };
+
+  const handleDialogContinue = () => {
+    setShowDialog(false);
+
+    if (!isCorrect) {
+      // If incorrect, reset the dropped answer
+      setDroppedAnswer(null);
+    }
+    // For correct answers, we let the timeout in handleDragEnd handle progression
   };
 
   const handleDragOver = ({ over }) => {
@@ -260,6 +286,7 @@ const GamePlay = () => {
   return (
     <GameBackground>
       <div className="min-h-screen">
+        <SoundEffects />
         <Header className="bg-white shadow-md" />
 
         <main className="max-w-4xl mx-auto px-4 py-8">
@@ -397,6 +424,15 @@ const GamePlay = () => {
             )}
           </div>
         </main>
+
+        <CorrectIncorrectDialog
+          show={showDialog}
+          isCorrect={isCorrect}
+          message={dialogMessage}
+          onClose={() => setShowDialog(false)}
+          onContinue={handleDialogContinue}
+          continueText={isCorrect ? 'Continue' : 'Try Again'}
+        />
       </div>
     </GameBackground>
   );

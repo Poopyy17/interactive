@@ -7,6 +7,8 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import Header from '../header';
 import GameBackground from '../GameBackground';
+import SoundEffects, { GameSounds } from '../SoundEffects';
+import CorrectIncorrectDialog from '../Correct-Incorrect-Dialog';
 
 const ProgressBar = ({ current, total }) => {
   const progress = (current / total) * 100;
@@ -30,6 +32,10 @@ const MultipleChoiceGamePlay = () => {
   const [isCorrect, setIsCorrect] = useState(null);
   const [gameComplete, setGameComplete] = useState(false);
   const [score, setScore] = useState(0);
+
+  // State for the dialog
+  const [showDialog, setShowDialog] = useState(false);
+  const [dialogMessage, setDialogMessage] = useState('');
 
   useEffect(() => {
     const fetchGame = async () => {
@@ -67,40 +73,46 @@ const MultipleChoiceGamePlay = () => {
 
     // Handle both property naming conventions (is_correct from backend, isCorrect from frontend)
     if (choice.is_correct || choice.isCorrect) {
+      // Correct sound effect
+      GameSounds.playCorrect();
+
       setIsCorrect(true);
       setScore(score + 1);
       triggerConfetti();
 
-      toast.success('Correct answer!', {
-        icon: '✅',
-        duration: 3000,
-      });
+      // Show dialog instead of toast
+      setDialogMessage('Correct answer!');
+      setShowDialog(true);
 
-      // Move to next question after delay
-      setTimeout(() => {
-        if (currentRound + 1 < game.total_rounds) {
-          setCurrentRound(currentRound + 1);
-          setSelectedChoice(null);
-          setIsCorrect(null);
-        } else {
-          setGameComplete(true);
-        }
-      }, 2000);
+      // Move to next question after dialog is closed
+      // The dialog will auto-continue for correct answers
     } else {
-      // Mark the answer as incorrect but don't show which one is correct
-      // and don't automatically proceed to the next question
+      // Incorrect sound effect
+      GameSounds.playIncorrect();
+
+      // Show dialog instead of toast
       setIsCorrect(false);
+      setDialogMessage('Incorrect answer! Try again.');
+      setShowDialog(true);
+    }
+  };
 
-      toast.error('Incorrect answer! Try again.', {
-        icon: '❌',
-        duration: 3000,
-      });
+  const handleDialogContinue = () => {
+    setShowDialog(false);
 
-      // Allow the user to try again by just clearing the selection and isCorrect state
-      setTimeout(() => {
+    if (isCorrect) {
+      // If answer was correct, move to next question
+      if (currentRound + 1 < game.total_rounds) {
+        setCurrentRound(currentRound + 1);
         setSelectedChoice(null);
         setIsCorrect(null);
-      }, 1500);
+      } else {
+        setGameComplete(true);
+      }
+    } else {
+      // If answer was incorrect, allow retry
+      setSelectedChoice(null);
+      setIsCorrect(null);
     }
   };
 
@@ -169,6 +181,7 @@ const MultipleChoiceGamePlay = () => {
   return (
     <GameBackground>
       <div className="min-h-screen flex flex-col">
+        <SoundEffects />
         <Header />
 
         <main className="container mx-auto px-4 py-8 flex-1 flex flex-col">
@@ -275,6 +288,15 @@ const MultipleChoiceGamePlay = () => {
             </div>
           </div>
         </main>
+
+        <CorrectIncorrectDialog
+          show={showDialog}
+          isCorrect={isCorrect}
+          message={dialogMessage}
+          onClose={() => setShowDialog(false)}
+          onContinue={handleDialogContinue}
+          continueText={isCorrect ? 'Next Question' : 'Try Again'}
+        />
       </div>
     </GameBackground>
   );
